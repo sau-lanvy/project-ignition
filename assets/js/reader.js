@@ -95,7 +95,10 @@
     const measureWrap = document.createElement('div');
     measureWrap.className = 'page right';
     measureWrap.style.cssText = 'position:absolute;left:-99999px;top:0;visibility:hidden;';
-    measureWrap.innerHTML = '<div class="page-inner"><div class="page-content" id="__measure"></div></div>';
+    measureWrap.innerHTML = '<div class="page-inner">' +
+      '<div class="page-content" id="__measure"></div>' +
+      '<div class="page-num" aria-hidden="true">888</div>' +
+      '</div>';
     document.body.appendChild(measureWrap);
     const measureEl = measureWrap.querySelector('#__measure');
 
@@ -104,7 +107,12 @@
 
     function fits(list){
       measureEl.innerHTML = list.join('');
-      return measureEl.scrollHeight <= measureEl.clientHeight + 1;
+      const lastBlock = measureEl.lastElementChild;
+      if(!lastBlock) return true;
+
+      const contentBottom = measureEl.getBoundingClientRect().bottom;
+      const lastBlockBottom = lastBlock.getBoundingClientRect().bottom;
+      return lastBlockBottom <= contentBottom;
     }
     function flush(sectionId, num){
       if(current.length){
@@ -478,6 +486,12 @@
     render();
 
     buildDrawer();
+
+    if(document.fonts && document.fonts.status !== 'loaded'){
+      document.fonts.ready.then(function(){
+        rebuildForMode(detectMode());
+      });
+    }
 
     // interactions
     arrowNextEl.addEventListener('click', function(e){ e.stopPropagation(); nextPage(); });
