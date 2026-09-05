@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Project Ignition — A Novel</title>
+<meta name="description" content="An immersive flipbook edition of Project Ignition, a business novel about agents, judgment, and helping your business win.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/reader.css">
+</head>
+<body>
+
+<div class="loader" id="loader">
+  <div class="loop-wrap">
+    <svg class="loop-svg" viewBox="0 0 200 200">
+      <circle class="loop-track" cx="100" cy="100" r="78"/>
+      <circle class="loop-sweep" cx="100" cy="100" r="78"/>
+      <line class="loop-spoke sp0" x1="100" y1="100" x2="100" y2="22"/>
+      <line class="loop-spoke sp1" x1="100" y1="100" x2="167" y2="61"/>
+      <line class="loop-spoke sp2" x1="100" y1="100" x2="167" y2="139"/>
+      <line class="loop-spoke sp3" x1="100" y1="100" x2="100" y2="178"/>
+      <line class="loop-spoke sp4" x1="100" y1="100" x2="33" y2="139"/>
+      <line class="loop-spoke sp5" x1="100" y1="100" x2="33" y2="61"/>
+      <circle class="loop-node n0" cx="100" cy="22" r="5"/>
+      <circle class="loop-node n1" cx="167" cy="61" r="5"/>
+      <circle class="loop-node n2" cx="167" cy="139" r="5"/>
+      <circle class="loop-node n3" cx="100" cy="178" r="5"/>
+      <circle class="loop-node n4" cx="33" cy="139" r="5"/>
+      <circle class="loop-node n5" cx="33" cy="61" r="5"/>
+      <circle class="loop-core" cx="100" cy="100" r="3.5"/>
+    </svg>
+    <div class="loop-stages">
+      <span class="stage-label s0">Plan</span>
+      <span class="stage-label s1">Design</span>
+      <span class="stage-label s2">Build</span>
+      <span class="stage-label s3">Test</span>
+      <span class="stage-label s4">Deploy</span>
+      <span class="stage-label s5">Maintain</span>
+    </div>
+  </div>
+  <div class="loader-txt">Assembling the Six Stages&hellip;</div>
+</div>
+
+<main class="reader-stage">
+
+  <div class="chrome" id="chrome">
+    <div class="side">
+      <button class="iconbtn" id="btnHome" title="Return to cover" aria-label="Return to cover">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9h13v-9"/></svg>
+      </button>
+      <div class="brandmark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2v6"/><path d="M12 2c-3 3-5 6-5 10a5 5 0 0 0 10 0c0-4-2-7-5-10Z"/></svg>
+        Project Ignition
+      </div>
+    </div>
+    <div class="progress-wrap"><div class="progress-bar" id="progressBar"></div></div>
+    <div class="side">
+      <span id="caption" class="caption"></span>
+      <span id="pageIndicator" style="min-width:64px;text-align:right;"></span>
+      <button class="iconbtn" id="btnToc" title="Open contents" aria-label="Open contents" aria-controls="drawer" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="scene" id="scene">
+
+    <div class="cover" id="cover" role="button" tabindex="0" aria-label="Open Project Ignition">
+      <div class="cover-face front">
+        <div class="cover-frame"></div>
+        <svg class="cover-emblem" viewBox="0 0 100 100" fill="none">
+          <circle cx="50" cy="50" r="34" stroke="#b8863f" stroke-width="1.4"/>
+          <circle cx="50" cy="50" r="27" stroke="#2f95b0" stroke-width="1" stroke-dasharray="3 4" opacity=".7"/>
+          <path d="M50 22 L50 34" stroke="#dcae5f" stroke-width="2" stroke-linecap="round"/>
+          <path d="M50 66 L50 78" stroke="#7d5e2c" stroke-width="2" stroke-linecap="round"/>
+          <path d="M22 50 L34 50" stroke="#7d5e2c" stroke-width="2" stroke-linecap="round"/>
+          <path d="M66 50 L78 50" stroke="#7d5e2c" stroke-width="2" stroke-linecap="round"/>
+          <path d="M50 50 L64 38" stroke="#5cc6e0" stroke-width="2.2" stroke-linecap="round"/>
+          <circle cx="50" cy="50" r="3.4" fill="#dcae5f"/>
+        </svg>
+        <div class="cover-kicker">A Novel</div>
+        <div class="cover-title">PROJECT<br><em>IGNITION</em></div>
+        <div class="cover-sub">About Agents, Judgment, and Helping Your Business Win</div>
+        <div class="cover-authors">An IT&nbsp;Revolution&ndash;Style Business Novel</div>
+        <div class="cover-hint">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 6 6 6-6 6"/></svg>
+          Tap to open
+        </div>
+      </div>
+      <div class="cover-face back cover-back"></div>
+    </div>
+
+    <div class="page left" id="pageLeft"></div>
+    <div class="page right" id="pageRight"></div>
+
+    <div class="leaf" id="leaf">
+      <div class="leaf-face front" id="leafFront"></div>
+      <div class="leaf-face back" id="leafBack"></div>
+    </div>
+
+    <button class="arrow arrow-prev" id="arrowPrev" type="button" aria-label="Previous page">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m15 5-7 7 7 7"/></svg>
+    </button>
+    <button class="arrow arrow-next" id="arrowNext" type="button" aria-label="Next page">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m9 5 7 7-7 7"/></svg>
+    </button>
+
+    <div class="reading-help" aria-hidden="true">
+      <span>Click page</span><i></i><span>Swipe</span><i></i><span>Arrow keys</span>
+    </div>
+
+  </div>
+
+</main>
+
+<div class="drawer-scrim" id="drawerScrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true" aria-label="Table of contents">
+  <button class="iconbtn drawer-close" id="btnCloseDrawer" aria-label="Close contents">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6l12 12M18 6 6 18"/></svg>
+  </button>
+  <h3>Contents</h3>
+  <span class="sub">Project Ignition &middot; 35 Chapters</span>
+  <div id="drawerList"></div>
+</aside>
+
+<script src="assets/js/chapters.js"></script>
+<script src="assets/js/reader.js"></script>
+
+</body>
+</html>
