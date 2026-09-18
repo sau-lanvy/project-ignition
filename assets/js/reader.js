@@ -34,6 +34,28 @@
         return '<div class="blk-head"><span class="k">Project Ignition</span>' +
           '<div class="n">Chapter ' + b.num + '</div>' +
           '<div class="d">' + b.date + '</div><hr></div>';
+      case 'chapter-guide':
+        return '<aside class="blk-guide" aria-label="Chapter guide">' +
+          '<span class="lbl">Reader&rsquo;s Guide</span>' +
+          '<p>' + b.html + '</p>' +
+          '<span class="guide-note">Read before the chapter for orientation, or return here when reviewing.</span></aside>';
+      case 'guide-intro':
+        return '<div class="blk-guide-intro">' +
+          '<span class="eyebrow">How to use this edition</span>' +
+          '<h2>Read the story.<br><em>Trace the system.</em></h2>' +
+          '<p>Each chapter opens with a short orientation from the novel&rsquo;s outline. At the end, Themes and Discussion Questions help connect Ridgeway&rsquo;s choices to your own organization.</p>' +
+          '<div class="guide-key"><span>Before</span> Chapter synopsis</div>' +
+          '<div class="guide-key"><span>After</span> Themes &amp; questions</div>' +
+          '<div class="guide-key"><span>Navigate</span> Expanded contents drawer</div>' +
+          '</div>';
+      case 'part-page':
+        return '<div class="blk-part">' +
+          '<span class="part-index">Part ' + romanNumeral(b.id) + '</span>' +
+          '<h2>' + b.title + '</h2>' +
+          '<span class="part-range">' + b.range + '</span>' +
+          '<div class="part-rule"></div>' +
+          '<p>' + b.summary + '</p>' +
+          '</div>';
       case 'title-page':
         return '<div class="blk-title">' +
           '<div class="k1">A Novel</div>' +
@@ -51,12 +73,36 @@
           '<span class="toc-title">Chapter '+b.num+'</span>' +
           '<span class="toc-fill"></span>' +
           '<span class="toc-date">'+b.date+'</span></div>';
+      case 'toc-part':
+        return '<div class="toc-part">Part ' + romanNumeral(b.id) + ' &middot; ' + b.title + '</div>';
       case 'sources-head':
         return '<div class="blk-sources-h">Sources &amp; Grounding<div class="rule" style="width:34px;height:1px;background:var(--brass);margin:.5em 0 1em;"></div></div>';
       case 'source-item':
         return '<div class="blk-source-item"><span class="who">'+b.who+'</span> &mdash; '+b.what+'</div>';
+      case 'application-head':
+        return '<div class="blk-application-head"><span class="eyebrow">Afterword</span>' +
+          '<h2>Apply It at<br><em>Your Level</em></h2>' +
+          '<p>The lesson is not “use more AI” or “add more process.” It is to match autonomy, context, and verification to the stakes of the work.</p></div>';
+      case 'application-principle':
+        return '<div class="application-card"><span class="card-num">'+String(b.index).padStart(2,'0')+'</span>' +
+          '<div><h3>'+b.title+'</h3><p>'+b.text+'</p></div></div>';
+      case 'application-role':
+        return '<div class="role-card"><span class="role-label">'+b.role+'</span><p>'+b.start+'</p></div>';
+      case 'application-month':
+        return '<div class="first-month"><span class="lbl">A practical first month</span><ol>' +
+          b.items.map(function(item){ return '<li>'+item+'</li>'; }).join('') + '</ol></div>';
       default: return '';
     }
+  }
+
+  function romanNumeral(num){
+    return num === 1 ? 'I' : 'II';
+  }
+
+  function partForChapter(num){
+    return window.BOOK_PARTS.find(function(part){
+      return part.id === (num <= 16 ? 1 : 2);
+    });
   }
 
   // ================= SECTION MODEL =================
@@ -71,14 +117,58 @@
       src: 'Elliot Vance, Chapter Seven'
     } ] });
 
+    sections.push({ id:'guide', kind:'front', blocks:[ {type:'guide-intro'} ] });
+
     const tocBlocks = [ {type:'toc-head'} ];
-    window.CHAPTERS.forEach(function(c){ tocBlocks.push({ type:'toc-row', num:c.num, date:c.date }); });
+    window.CHAPTERS.forEach(function(c){
+      if(c.num === 1 || c.num === 17){
+        const tocPart = partForChapter(c.num);
+        tocBlocks.push({ type:'toc-part', id:tocPart.id, title:tocPart.title });
+      }
+      tocBlocks.push({ type:'toc-row', num:c.num, date:c.date });
+    });
     sections.push({ id:'toc', kind:'front', blocks: tocBlocks });
 
     window.CHAPTERS.forEach(function(c){
-      const blocks = [ {type:'chapter-head', num:c.num, date:c.date} ].concat(c.blocks);
+      if(c.num === 1 || c.num === 17){
+        const part = partForChapter(c.num);
+        sections.push({
+          id:'part-'+part.id,
+          kind:'part',
+          blocks:[{
+            type:'part-page',
+            id:part.id,
+            title:part.title,
+            range:part.range,
+            summary:part.summary
+          }]
+        });
+      }
+      const blocks = [
+        {type:'chapter-head', num:c.num, date:c.date},
+        {type:'chapter-guide', html:window.CHAPTER_GUIDE[c.num]}
+      ].concat(c.blocks);
       sections.push({ id:'ch-'+c.num, kind:'chapter', num:c.num, blocks: blocks });
     });
+
+    const applicationBlocks = [ {type:'application-head'} ];
+    window.APPLICATION_GUIDE.principles.forEach(function(item, index){
+      applicationBlocks.push({
+        type:'application-principle',
+        index:index+1,
+        title:item.title,
+        text:item.text
+      });
+    });
+    window.APPLICATION_GUIDE.roles.forEach(function(item){
+      applicationBlocks.push({
+        type:'application-role',
+        role:item.role,
+        start:item.start
+      });
+    });
+    applicationBlocks.push({type:'application-month', items:window.APPLICATION_GUIDE.firstMonth});
+    sections.push({ id:'application', kind:'back', startOnRight:true, blocks:applicationBlocks });
 
     sections.push({ id:'sources', kind:'back', blocks:[
       {type:'sources-head'},
@@ -122,7 +212,7 @@
     }
 
     sections.forEach(function(section){
-      if(alignChaptersRight && section.kind === 'chapter' && out.length % 2 === 0){
+      if(alignChaptersRight && (section.kind === 'chapter' || section.startOnRight) && out.length % 2 === 0){
         out.push({ html:'', blank:true });
       }
       section.blocks.forEach(function(block){
@@ -182,11 +272,13 @@
     const frac = mode === 'spread' ? (pos)/(Math.max(total-1,1)) : pos/(Math.max(total-1,1));
     progressBarEl.style.width = (Math.min(frac,1)*100).toFixed(1)+'%';
 
-    const chNum = mode === 'spread'
+    const focusPage = mode === 'spread' ? pages[pos+1] : pages[pos];
+    const focusIsApplication = focusPage && focusPage.sectionId === 'application';
+    const chNum = focusIsApplication ? null : (mode === 'spread'
       ? (chapterInfoAt(pos+1) || chapterInfoAt(pos))
-      : chapterInfoAt(pos);
+      : chapterInfoAt(pos));
     currentChapterNum = chNum;
-    captionEl.textContent = chNum ? ('Chapter '+chNum) : frontBackLabel();
+    captionEl.textContent = focusIsApplication ? 'Apply It' : (chNum ? ('Chapter '+chNum) : frontBackLabel());
     captionEl.classList.add('show');
 
     const shownPages = mode === 'spread'
@@ -216,7 +308,10 @@
     if(!p) return '';
     if(p.sectionId === 'title') return 'Title Page';
     if(p.sectionId === 'epigraph') return 'Epigraph';
+    if(p.sectionId === 'guide') return 'Reader’s Guide';
     if(p.sectionId === 'toc') return 'Contents';
+    if(p.sectionId && p.sectionId.indexOf('part-') === 0) return 'Part '+p.sectionId.slice(5);
+    if(p.sectionId === 'application') return 'Apply It';
     if(p.sectionId === 'sources') return 'Sources';
     return '';
   }
@@ -255,14 +350,24 @@
       else { leafEl.style.left = '0px'; leafEl.style.transformOrigin = 'right center'; }
     } else {
       leafEl.style.left = '0px';
-      leafEl.style.transformOrigin = dir === 'fwd' ? 'right center' : 'left center';
+      leafEl.style.transformOrigin = dir === 'fwd' ? 'left center' : 'right center';
     }
   }
 
-  function showLeaf(){
+  function prepareLeaf(){
     leafEl.classList.remove('turning-fwd','turning-back');
     leafEl.classList.add('active');
-    void leafEl.offsetWidth; // force reflow so the animation class re-triggers cleanly
+    void leafEl.offsetWidth;
+  }
+
+  function startLeafTurn(directionClass, cb){
+    prepareLeaf();
+    afterFlip(cb);
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){
+        leafEl.classList.add(directionClass);
+      });
+    });
   }
 
   function stageDestination(dir, newPos){
@@ -302,9 +407,7 @@
       leafBackEl.innerHTML  = pageInnerHTML(pages[pos+1], pos+1);
     }
     stageDestination('fwd', newPos);
-    showLeaf();
-    leafEl.classList.add('turning-fwd');
-    afterFlip(function(){
+    startLeafTurn('turning-fwd', function(){
       finishTurn('turning-fwd');
       flipping = false;
       if(myToken !== flipToken) return; // superseded by a jump/other nav mid-flip
@@ -331,9 +434,7 @@
       leafBackEl.innerHTML  = pageInnerHTML(pages[pos-1], pos-1);
     }
     stageDestination('back', newPos);
-    showLeaf();
-    leafEl.classList.add('turning-back');
-    afterFlip(function(){
+    startLeafTurn('turning-back', function(){
       finishTurn('turning-back');
       flipping = false;
       if(myToken !== flipToken) return; // superseded by a jump/other nav mid-flip
@@ -352,7 +453,7 @@
     }
     leafEl.addEventListener('animationend', handler);
     // safety fallback in case animationend doesn't fire (hidden tab etc.)
-    setTimeout(function(){ if(!done){ done = true; leafEl.removeEventListener('animationend', handler); cb(); } }, 1550);
+    setTimeout(function(){ if(!done){ done = true; leafEl.removeEventListener('animationend', handler); cb(); } }, 1250);
   }
 
   // ================= NAVIGATION HELPERS =================
@@ -383,10 +484,35 @@
     closeDrawer();
   }
 
+  function goToSection(sectionId){
+    const target = pages.findIndex(function(page){ return page.sectionId === sectionId; });
+    if(target < 0) return;
+    cancelAnyFlip();
+    pos = mode === 'spread' && target % 2 !== 0 ? target - 1 : target;
+    render();
+    closeDrawer();
+  }
+
   // ================= TOC DRAWER =================
   function buildDrawer(){
     drawerListEl.innerHTML = '';
+    const applicationLink = document.createElement('button');
+    applicationLink.type = 'button';
+    applicationLink.className = 'drawer-feature';
+    applicationLink.innerHTML = '<span class="df-kicker">Practical afterword</span>' +
+      '<span class="df-title">Apply It at Your Level</span>' +
+      '<span class="df-copy">Starting points for newcomers, practitioners, leaders, and governance teams.</span>';
+    applicationLink.onclick = function(){ goToSection('application'); };
+    drawerListEl.appendChild(applicationLink);
+
     window.CHAPTERS.forEach(function(c){
+      if(c.num === 1 || c.num === 17){
+        const part = partForChapter(c.num);
+        const heading = document.createElement('div');
+        heading.className = 'drawer-part';
+        heading.innerHTML = '<span>Part '+romanNumeral(part.id)+'</span>'+part.title;
+        drawerListEl.appendChild(heading);
+      }
       const item = document.createElement('button');
       item.type = 'button';
       item.className = 'drawer-item';
@@ -394,7 +520,8 @@
       item.setAttribute('aria-label', 'Go to chapter '+c.num+', '+c.date);
       item.innerHTML = '<span class="di-num">'+String(c.num).padStart(2,'0')+'</span>' +
         '<span class="di-text"><span class="di-title">Chapter '+c.num+'</span>' +
-        '<span class="di-date">'+c.date+'</span></span>';
+        '<span class="di-date">'+c.date+'</span>' +
+        '<span class="di-summary">'+window.CHAPTER_GUIDE[c.num]+'</span></span>';
       item.onclick = function(){ goToChapter(c.num); };
       drawerListEl.appendChild(item);
     });

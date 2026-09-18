@@ -404,7 +404,7 @@ window.CHAPTERS = [
       },
       {
         "type": "p",
-        "html": "John — Jon Ferreira’s office door has a badge reader on it, which no other office on this floor has, and which I’ve always privately thought was a little theatrical until this exact moment, when it strikes me as possibly the only correctly locked door in the building."
+        "html": "Jon Ferreira’s office door has a badge reader on it, which no other office on this floor has, and which I’ve always privately thought was a little theatrical until this exact moment, when it strikes me as possibly the only correctly locked door in the building."
       },
       {
         "type": "p",
@@ -1220,6 +1220,10 @@ window.CHAPTERS = [
       },
       {
         "type": "p",
+        "html": "That didn’t make the left end of the spectrum useless. A throwaway prototype, a one-time script, an idea someone needs to see before deciding whether it deserves investment — those can live there perfectly well. The mistake is pretending a prototype and a production system deserve the same amount of trust. The right place on the line depends on the stakes, not on whether the person using the agent is serious or skilled."
+      },
+      {
+        "type": "p",
         "html": "I bring the idea into the war room Monday morning. Priya’s already there, and Marcus arrives a few minutes later with actual coffee this time instead of index cards, which I take as a sign he’s cautiously optimistic about the day."
       },
       {
@@ -1251,7 +1255,7 @@ window.CHAPTERS = [
       },
       {
         "type": "p",
-        "html": "<strong>Low risk</strong>: small blast radius, fully reversible, no sensitive data, and a pattern the agent’s executed successfully many times before with a passing eval suite. These auto-merge. No human in the loop, the same way no human at AP-12 eyeballs every camshaft — the gauge decides, and the gauge is the automated eval suite checking the change against known-good behavior before it’s allowed anywhere near production."
+        "html": "<strong>Low risk</strong>: small blast radius, fully reversible, no sensitive data, and a pattern the agent’s executed successfully many times before with a passing eval suite. These can auto-merge after the automated checks, but the agent still doesn’t authorize itself into production. A named service owner approves the low-risk release policy and remains accountable for the lane; the gauge decides whether a change qualifies to enter it."
       },
       {
         "type": "p",
@@ -3825,6 +3829,10 @@ window.CHAPTERS = [
       },
       {
         "type": "p",
+        "html": "Looking at it, I realize Nathan has already written the beginning of the Plan stage without knowing the name for it. Not a technical requirement. An intent: what Finance needs, why it matters, what cannot be compromised. He should never have needed to speak git or write a ticket in Engineering’s language to start that chain. The first artifact belongs in the originator’s own words; our job is to make it easy for the next stage to read."
+      },
+      {
+        "type": "p",
         "html": "Maintain accurate, auditable revenue recognition — the thing that nearly became a restatement in March. And, quietly, at the bottom: preserve the company’s ability to raise capital at a reasonable cost, which depends more than anyone in this building seems to realize on whether outside investors believe Ridgeway’s systems are trustworthy."
       },
       {
@@ -4445,7 +4453,7 @@ window.CHAPTERS = [
       },
       {
         "type": "p",
-        "html": "Every deployment, even a fully-reviewed, low-risk, auto-merged change, still waits for a manually provisioned staging environment — nobody automated that step, because in March we were focused entirely on review and verification, not on what happened physically after something passed review. Provisioning takes anywhere from two to six hours, depending on who’s available to kick it off, which means even the fastest, safest change in our system is stuck behind a step that has nothing to do with whether it’s safe at all."
+        "html": "Every deployment, even a fully verified low-risk change that has already cleared its accountable owner's release policy, still waits for a manually provisioned staging environment — nobody automated that step, because in March we were focused entirely on review and verification, not on what happened physically after something passed review. Provisioning takes anywhere from two to six hours, depending on who’s available to kick it off, which means even the fastest, safest change in our system is stuck behind a step that has nothing to do with whether it’s safe at all."
       },
       {
         "type": "p",
@@ -4453,7 +4461,7 @@ window.CHAPTERS = [
       },
       {
         "type": "p",
-        "html": "And every change, regardless of tier, still funnels through the same single deploy pipeline, one at a time, in sequence, even though a low-risk auto-merged change and a high-risk six-stage change have completely different verification needs and completely different reasons to be waiting behind each other in the same queue."
+        "html": "And every change, regardless of tier, still funnels through the same single deploy pipeline, one at a time, in sequence, even though a low-risk pre-authorized change and a high-risk change waiting for a named release manager have completely different verification needs and completely different reasons to be waiting behind each other in the same queue."
       },
       {
         "type": "p",
@@ -4464,7 +4472,7 @@ window.CHAPTERS = [
       },
       {
         "type": "p",
-        "html": "We spend the rest of the day sketching what combining those stations would actually look like. Environment provisioning gets automated entirely for anything low-risk — spun up and torn down by the pipeline itself, no human in the loop, the same way the low-risk tier already trusts the eval suite without a human reviewer. Deployment windows get replaced with a standing, always-open lane for anything that’s cleared its tier’s requirements, instead of a negotiated appointment — the same shift the plant made from carts-on-a-schedule to a conveyor that just keeps moving."
+        "html": "We spend the rest of the day sketching what combining those stations would actually look like. Environment provisioning gets automated entirely for anything low-risk — spun up and torn down by the pipeline itself, with no person waiting around to click through routine setup. Deployment windows become an always-available lane once the named owner has authorized the release; high-risk work still stops for explicit release approval. The agent can prepare everything up to that gate. It cannot grant itself permission to cross it."
       },
       {
         "type": "p",
@@ -4516,6 +4524,14 @@ window.CHAPTERS = [
       },
       {
         "type": "break"
+      },
+      {
+        "type": "p",
+        "html": "Before we talk about what an agent can touch, Iris makes us write down what it should know. “Everyone keeps treating context like whatever fits in the prompt,” she says. “It’s architecture. Some context has to be present every time — the non-negotiable rules, the system boundaries, the commands that prove the work. The rest should arrive only when the task needs it — a domain guide, a policy, a tool result, the last incident in this part of the system. Load everything and the important rules disappear into noise. Load too little and the agent invents the missing pieces.”"
+      },
+      {
+        "type": "p",
+        "html": "Jon divides the board in two. On one side, guidance: versioned instructions and skills that teach the agent how Ridgeway works. On the other, enforcement: hooks and permissions that make certain actions impossible, however persuasive the output looks. “A skill can remind it not to expose customer data,” he says. “A deterministic control is what stops it. We need both, and every one needs an owner.”"
       },
       {
         "type": "p",
@@ -4934,7 +4950,7 @@ window.CHAPTERS = [
       },
       {
         "type": "p",
-        "html": "I check the timestamp. Forty seconds between the anomaly firing and the rollback executing. No one typed a command. No one had to decide, under pressure, whether it was safe to pull the trigger. The trigger had already been built, tested, and staged back in Owen’s founding-team session in May, waiting for exactly this moment, the way the plant’s gauge waits for a camshaft that doesn’t pass tolerance."
+        "html": "I check the timestamp. Forty seconds between the anomaly firing and the rollback executing. No one typed a command. No one had to invent a decision under pressure, because the service owner and Jon had already approved this exact control boundary and rollback condition before launch. The trigger had been built, tested, and staged back in Owen’s founding-team session in May, waiting for exactly this moment, the way the plant’s gauge waits for a camshaft that doesn’t pass tolerance."
       },
       {
         "type": "break"
@@ -4954,6 +4970,10 @@ window.CHAPTERS = [
       {
         "type": "p",
         "html": "Iris reads it twice, slowly, and I can see her checking it the way she checks everything — not trusting the summary, going down to the actual data underneath it."
+      },
+      {
+        "type": "p",
+        "html": "She checks two things. The output eval asks whether the rollback left the accounts in the correct state. The trajectory eval asks whether the system took the approved path to get there — the expected classifier, the scoped rollback tool, no unapproved data access, no skipped gate. A correct result reached through the wrong path is still a failed run now."
       },
       {
         "type": "p",
@@ -4991,7 +5011,7 @@ window.CHAPTERS = [
       },
       {
         "type": "p",
-        "html": "By early afternoon, the fix ships properly — reviewed, tested, deployed through the same pipeline, closing the loop on an incident that from the outside world’s perspective never happened at all. No social media post. No dealer calling in confused. No emergency call with legal. Just a filed record, a corrected calculation, and a promotion that finishes its day exactly the way Renee planned it, minus four hundred accounts that got an extra hour of a slightly-too-generous discount before the system quietly corrected itself."
+        "html": "By early afternoon, the fix ships properly — reviewed, tested, deployed through the same pipeline, closing the loop on an incident that from the outside world’s perspective never happened at all. The incident record has already opened a new intent artifact and a permanent regression eval, so the Maintain stage has fed what production learned back into Plan. No social media post. No dealer calling in confused. No emergency call with legal. Just a filed record, a corrected calculation, and a promotion that finishes its day exactly the way Renee planned it, minus four hundred accounts that got an extra hour of a slightly-too-generous discount before the system quietly corrected itself."
       },
       {
         "type": "p",
