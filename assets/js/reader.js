@@ -8,7 +8,7 @@
   let sceneEl, pageLeftEl, pageRightEl, leafEl, leafFrontEl, leafBackEl,
       chromeEl, progressBarEl, captionEl, pageIndicatorEl,
       arrowPrevEl, arrowNextEl, coverEl, drawerEl, drawerScrimEl, drawerListEl,
-      loaderEl;
+      loaderEl, liveEl;
 
   // ---- state ----
   let pages = [];
@@ -17,6 +17,8 @@
   let pos = 0;                   // left index (spread) or page index (single)
   let flipping = false;
   let flipToken = 0;
+  let queuedSteps = 0;           // net turns requested while a turn is running
+  const MAX_QUEUED_TURNS = 3;
   let currentChapterNum = null;
   let bookOpen = false;
 
@@ -301,6 +303,24 @@
         el.classList.toggle('active', Number(el.dataset.num) === chNum);
       });
     }
+    announce();
+  }
+
+  // Polite, debounced screen-reader announcement of the visible pages, so
+  // riffles and queued turns only announce where the reader ends up.
+  let announceTimer = null;
+  function announce(){
+    if(!liveEl) return;
+    clearTimeout(announceTimer);
+    announceTimer = setTimeout(function(){
+      if(!bookOpen) return;
+      const total = pages.length;
+      const where = mode === 'spread'
+        ? 'Pages ' + (pos+1) + ' and ' + Math.min(pos+2, total)
+        : 'Page ' + (pos+1);
+      const label = captionEl.textContent;
+      liveEl.textContent = where + ' of ' + total + (label ? ', ' + label : '');
+    }, 350);
   }
 
   function frontBackLabel(){
@@ -321,6 +341,7 @@
       el.querySelectorAll('.toc-row').forEach(function(row){
         row.onclick = function(e){
           e.stopPropagation();
+          if(performance.now() < suppressClickUntil) return;
           goToChapter(Number(row.dataset.goto));
         };
       });
@@ -333,6 +354,7 @@
   // means nothing can silently block a link near the edge of a page.
   function onPageClick(which){
     return function(e){
+      if(performance.now() < suppressClickUntil) return; // the end of a drag
       if(mode === 'single'){
         const r = pageRightEl.getBoundingClientRect();
         const frac = (e.clientX - r.left) / r.width;
@@ -343,138 +365,354 @@
     };
   }
 
-  // ================= FLIP ANIMATION =================
-  function setLeafGeometry(dir){
-    if(mode === 'spread'){
-      if(dir === 'fwd'){ leafEl.style.left = 'var(--page-w)'; leafEl.style.transformOrigin = 'left center'; }
-      else { leafEl.style.left = '0px'; leafEl.style.transformOrigin = 'right center'; }
-    } else {
-      leafEl.style.left = '0px';
-      leafEl.style.transformOrigin = dir === 'fwd' ? 'left center' : 'right center';
+  // ================= FLIP ENGINE =================
+  // Every turn — click, keyboard, queued, contents riffle or finger drag — is
+  // set up once by beginTurn() and then driven by a single progress value
+  // p ∈ [0,1] via setProgress(). CSS derives rotation, lift, light and
+  // shadows from the custom properties written there, so a drag can be
+  // scrubbed, released and eased to either end with the same renderer.
+  let activeTurn = null;   // { dir, newPos, fromAngle, toAngle, dest, token, p }
+  let rafId = 0;
+  let riffling = false;
+  let drag = null;
+  let suppressClickUntil = 0;
+
+  const RIFFLE_MAX_TURNS = 5;
+  const DRAG_THRESHOLD = 8;
+  const reducedMotion = window.matchMedia
+    ? window.matchMedia('(prefers-reduced-motion: reduce)')
+    : { matches:false };
+
+  function cubicBezier(x1, y1, x2, y2){
+    function at(t, a1, a2){ return ((1 - 3*a2 + 3*a1)*t + (3*a2 - 6*a1))*t*t + 3*a1*t; }
+    return function(x){
+      if(x <= 0) return 0;
+      if(x >= 1) return 1;
+      let lo = 0, hi = 1, t = x;
+      for(let i = 0; i < 24; i++){
+        const v = at(t, x1, x2);
+        if(Math.abs(v - x) < 1e-5) break;
+        if(v < x) lo = t; else hi = t;
+        t = (lo + hi) / 2;
+      }
+      return at(t, y1, y2);
+    };
+  }
+  const EASE_TURN = cubicBezier(.32,.02,.18,1);
+  const EASE_RELEASE = cubicBezier(.2,.7,.3,1);
+  const EASE_RIFFLE = cubicBezier(.45,.05,.4,1);
+
+  function stepSize(){ return mode === 'spread' ? 2 : 1; }
+
+  function lastPos(){
+    const last = Math.max(pages.length - 1, 0);
+    return mode === 'spread' ? last - (last % 2) : last;
+  }
+
+  function alignPos(idx){
+    return mode === 'spread' && idx % 2 !== 0 ? idx - 1 : idx;
+  }
+
+  function canTurn(dir){
+    if(dir === 'fwd'){
+      return mode === 'spread' ? pos + 2 < pages.length : pos + 1 < pages.length;
     }
+    return pos - stepSize() >= 0;
   }
 
-  function prepareLeaf(){
-    leafEl.classList.remove('turning-fwd','turning-back');
-    leafEl.classList.add('active');
-    void leafEl.offsetWidth;
+  function setTurnSpeed(fast){
+    sceneEl.classList.toggle('turn-fast', fast);
   }
 
-  function startLeafTurn(directionClass, cb){
-    prepareLeaf();
-    afterFlip(cb);
-    requestAnimationFrame(function(){
-      requestAnimationFrame(function(){
-        leafEl.classList.add(directionClass);
-      });
-    });
+  function turnDurationMs(){
+    const raw = getComputedStyle(sceneEl).getPropertyValue('--turn-duration').trim();
+    const n = parseFloat(raw);
+    if(!isFinite(n)) return 980;
+    return /ms$/.test(raw) ? n : n * 1000;
   }
 
-  function stageDestination(dir, newPos){
+  function setFace(faceEl, idx, side){
+    faceEl.innerHTML = pageInnerHTML(pages[idx], idx);
+    faceEl.classList.remove('side-left','side-right','side-single','side-verso');
+    faceEl.classList.add('side-' + side);
+  }
+
+  // Single-page mode shows the reverse of a sheet as plain paper instead of
+  // leaking the next page's content onto the swinging leaf.
+  function setVerso(faceEl){
+    faceEl.innerHTML = '<div class="page-inner"></div>';
+    faceEl.classList.remove('side-left','side-right','side-single','side-verso');
+    faceEl.classList.add('side-verso');
+  }
+
+  function beginTurn(dir, newPos){
+    const token = ++flipToken;
+    flipping = true;
+    let spine = 'left', fromAngle = 0, toAngle = -180, dest = null;
+
     if(mode === 'spread'){
       if(dir === 'fwd'){
+        setFace(leafFrontEl, pos+1, 'right');
+        setFace(leafBackEl, newPos, 'left');
         pageRightEl.innerHTML = pageInnerHTML(pages[newPos+1], newPos+1);
+        dest = pageRightEl;
       } else {
+        spine = 'right'; toAngle = 180;
+        setFace(leafFrontEl, pos, 'left');
+        setFace(leafBackEl, newPos+1, 'right');
         pageLeftEl.innerHTML = pageInnerHTML(pages[newPos], newPos);
+        dest = pageLeftEl;
       }
-    } else {
+    } else if(dir === 'fwd'){
+      // current page lifts away over the left edge, the next waits beneath
+      setFace(leafFrontEl, pos, 'single');
+      setVerso(leafBackEl);
       pageRightEl.innerHTML = pageInnerHTML(pages[newPos], newPos);
-    }
-    sceneEl.classList.add(dir === 'fwd' ? 'turning-fwd' : 'turning-back');
-  }
-
-  function finishTurn(directionClass){
-    leafEl.classList.remove('active', directionClass);
-    sceneEl.classList.remove('turning-fwd','turning-back');
-  }
-
-  function nextPage(){
-    if(flipping || !bookOpen) return;
-    const step = mode === 'spread' ? 2 : 1;
-    const newPos = pos + step;
-    if(newPos >= pages.length && mode === 'single') return;
-    if(mode === 'spread' && pos+2 > pages.length) return;
-    flipping = true;
-    const myToken = ++flipToken;
-
-    setLeafGeometry('fwd');
-    leafEl.dataset.dir = 'fwd';
-    if(mode === 'spread'){
-      leafFrontEl.innerHTML = pageInnerHTML(pages[pos+1], pos+1);
-      leafBackEl.innerHTML  = pageInnerHTML(pages[pos+2], pos+2);
+      dest = pageRightEl;
     } else {
-      leafFrontEl.innerHTML = pageInnerHTML(pages[pos], pos);
-      leafBackEl.innerHTML  = pageInnerHTML(pages[pos+1], pos+1);
+      // previous page swings back in from the left and lands on top
+      fromAngle = -180; toAngle = 0;
+      setFace(leafFrontEl, newPos, 'single');
+      setVerso(leafBackEl);
     }
-    stageDestination('fwd', newPos);
-    startLeafTurn('turning-fwd', function(){
-      finishTurn('turning-fwd');
-      flipping = false;
-      if(myToken !== flipToken) return; // superseded by a jump/other nav mid-flip
-      pos = newPos;
-      render();
+
+    leafEl.dataset.spine = spine;
+    if(mode === 'spread'){
+      leafEl.style.left = spine === 'left' ? 'var(--page-w)' : '0px';
+    } else {
+      leafEl.style.left = '0px';
+    }
+    leafEl.style.transformOrigin = spine + ' center';
+    if(dest) dest.classList.add('is-destination');
+
+    activeTurn = { dir:dir, newPos:newPos, fromAngle:fromAngle, toAngle:toAngle, dest:dest, token:token, p:0 };
+    setProgress(0);
+    leafEl.classList.add('active');
+    return activeTurn;
+  }
+
+  function setProgress(p){
+    const t = activeTurn;
+    if(!t) return;
+    t.p = p;
+    const angle = t.fromAngle + (t.toAngle - t.fromAngle) * p;
+    const turned = Math.abs(angle) / 180;
+    leafEl.style.setProperty('--angle', angle.toFixed(2));
+    leafEl.style.setProperty('--p', turned.toFixed(4));
+    leafEl.style.setProperty('--hump', Math.sin(turned * Math.PI).toFixed(4));
+    if(t.dest) t.dest.style.setProperty('--settle', (1 - p).toFixed(4));
+  }
+
+  function animateTo(target, duration, ease, done){
+    cancelAnimationFrame(rafId);
+    const t = activeTurn;
+    const from = t.p;
+    if(reducedMotion.matches || duration <= 0 || from === target){
+      setProgress(target);
+      done();
+      return;
+    }
+    const start = performance.now();
+    function frame(now){
+      if(activeTurn !== t) return;
+      const k = Math.min(1, (now - start) / duration);
+      setProgress(from + (target - from) * ease(k));
+      if(k < 1){ rafId = requestAnimationFrame(frame); }
+      else { rafId = 0; done(); }
+    }
+    rafId = requestAnimationFrame(frame);
+  }
+
+  function clearDestination(t){
+    if(t && t.dest){
+      t.dest.classList.remove('is-destination');
+      t.dest.style.removeProperty('--settle');
+    }
+  }
+
+  function endTurn(commit){
+    const t = activeTurn;
+    activeTurn = null;
+    flipping = false;
+    leafEl.classList.remove('active');
+    clearDestination(t);
+    if(commit) pos = t.newPos;
+    render();
+  }
+
+  // Clicks/keys that arrive mid-turn are queued (net direction, capped) and
+  // played back at a faster tempo, so rapid input never feels dropped.
+  function requestTurn(dir){
+    if(!bookOpen || riffling) return;
+    if(flipping){
+      const next = queuedSteps + (dir === 'fwd' ? 1 : -1);
+      if(Math.abs(next) <= MAX_QUEUED_TURNS) queuedSteps = next;
+      return;
+    }
+    turn(dir);
+  }
+
+  function nextPage(){ requestTurn('fwd'); }
+  function prevPage(){ requestTurn('back'); }
+
+  function drainQueue(){
+    if(queuedSteps === 0){ setTurnSpeed(false); return; }
+    const dir = queuedSteps > 0 ? 'fwd' : 'back';
+    queuedSteps += queuedSteps > 0 ? -1 : 1;
+    setTurnSpeed(true);
+    turn(dir);
+  }
+
+  function turn(dir){
+    if(!canTurn(dir)){
+      queuedSteps = 0;
+      setTurnSpeed(false);
+      return;
+    }
+    const t = beginTurn(dir, dir === 'fwd' ? pos + stepSize() : pos - stepSize());
+    animateTo(1, turnDurationMs(), EASE_TURN, function(){
+      if(activeTurn !== t) return;
+      endTurn(true);
+      drainQueue();
     });
   }
 
-  function prevPage(){
-    if(flipping || !bookOpen) return;
-    const step = mode === 'spread' ? 2 : 1;
-    const newPos = pos - step;
-    if(newPos < 0) return;
-    flipping = true;
-    const myToken = ++flipToken;
-
-    setLeafGeometry('back');
-    leafEl.dataset.dir = 'back';
-    if(mode === 'spread'){
-      leafFrontEl.innerHTML = pageInnerHTML(pages[pos], pos);
-      leafBackEl.innerHTML  = pageInnerHTML(pages[pos-1], pos-1);
-    } else {
-      leafFrontEl.innerHTML = pageInnerHTML(pages[pos], pos);
-      leafBackEl.innerHTML  = pageInnerHTML(pages[pos-1], pos-1);
-    }
-    stageDestination('back', newPos);
-    startLeafTurn('turning-back', function(){
-      finishTurn('turning-back');
-      flipping = false;
-      if(myToken !== flipToken) return; // superseded by a jump/other nav mid-flip
-      pos = newPos;
-      render();
-    });
+  function cancelAnyFlip(){
+    flipToken++;
+    cancelAnimationFrame(rafId);
+    rafId = 0;
+    riffling = false;
+    drag = null;
+    sceneEl.classList.remove('dragging');
+    queuedSteps = 0;
+    setTurnSpeed(false);
+    clearDestination(activeTurn);
+    activeTurn = null;
+    flipping = false;
+    leafEl.classList.remove('active');
   }
 
-  function afterFlip(cb){
-    let done = false;
-    function handler(e){
-      if(e.target !== leafEl) return;
-      if(done) return; done = true;
-      leafEl.removeEventListener('animationend', handler);
-      cb();
+  // ================= RIFFLE (animated jumps) =================
+  // Long jumps flutter through a handful of intermediate spreads, fast in the
+  // middle and slower at both ends, so the reader sees direction and distance.
+  function jumpTo(target, animate){
+    target = Math.max(0, Math.min(alignPos(target), lastPos()));
+    cancelAnyFlip();
+    if(!animate || !bookOpen || reducedMotion.matches || target === pos){
+      pos = target;
+      render();
+      return;
     }
-    leafEl.addEventListener('animationend', handler);
-    // safety fallback in case animationend doesn't fire (hidden tab etc.)
-    setTimeout(function(){ if(!done){ done = true; leafEl.removeEventListener('animationend', handler); cb(); } }, 1250);
+    const step = stepSize();
+    const dir = target > pos ? 'fwd' : 'back';
+    const spreads = Math.abs(target - pos) / step;
+    const n = Math.min(RIFFLE_MAX_TURNS, spreads);
+    const stops = [];
+    for(let i = 1; i <= n; i++){
+      stops.push(pos + Math.sign(target - pos) * Math.round(spreads * i / n) * step);
+    }
+    stops[stops.length - 1] = target;
+
+    riffling = true;
+    let i = 0;
+    function next(){
+      if(i >= stops.length){ riffling = false; return; }
+      const edge = n === 1 ? 1 : Math.abs((i / (n - 1)) * 2 - 1);
+      const duration = n === 1 ? turnDurationMs() * 0.7 : 190 + 150 * edge;
+      const t = beginTurn(dir, stops[i++]);
+      animateTo(1, duration, EASE_RIFFLE, function(){
+        if(activeTurn !== t) return;
+        endTurn(true);
+        next();
+      });
+    }
+    next();
+  }
+
+  // ================= DRAG TO TURN =================
+  function dragSpan(dir, x0){
+    if(mode === 'single') return pageRightEl.getBoundingClientRect().width * 0.85;
+    const r = pageRightEl.getBoundingClientRect();
+    const spineX = r.left;
+    return dir === 'fwd' ? x0 - (spineX - r.width) : (spineX + r.width) - x0;
+  }
+
+  // Map pointer travel onto the leaf angle so the free edge (projected onto
+  // the page plane, x = cos θ) stays under the pointer.
+  function progressFromDrag(travelled, span){
+    const t = Math.max(0, Math.min(1, travelled / Math.max(span, 1)));
+    return Math.acos(1 - 2 * t) / Math.PI;
+  }
+
+  function onPointerDown(e){
+    if(!bookOpen || flipping || riffling || e.button !== 0 || !e.isPrimary) return;
+    if(!pageLeftEl.contains(e.target) && !pageRightEl.contains(e.target)) return;
+    let dir = null;
+    if(mode === 'spread') dir = pageRightEl.contains(e.target) ? 'fwd' : 'back';
+    drag = { id:e.pointerId, x0:e.clientX, y0:e.clientY, lastX:e.clientX, lastT:e.timeStamp,
+             vx:0, dir:dir, started:false, turn:null, span:0 };
+  }
+
+  function onPointerMove(e){
+    if(!drag || e.pointerId !== drag.id) return;
+    const dx = e.clientX - drag.x0;
+    const dy = e.clientY - drag.y0;
+    if(!drag.started){
+      if(Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
+      const dir = drag.dir || (dx < 0 ? 'fwd' : 'back');
+      if(Math.abs(dy) > Math.abs(dx) || (dir === 'fwd') !== (dx < 0) || flipping || !canTurn(dir)){
+        drag = null;
+        return;
+      }
+      drag.dir = dir;
+      drag.started = true;
+      drag.span = dragSpan(dir, drag.x0);
+      drag.turn = beginTurn(dir, dir === 'fwd' ? pos + stepSize() : pos - stepSize());
+      sceneEl.classList.add('dragging');
+      if(window.getSelection) window.getSelection().removeAllRanges();
+    }
+    const dt = e.timeStamp - drag.lastT;
+    if(dt > 0){
+      drag.vx = 0.7 * ((e.clientX - drag.lastX) / dt) + 0.3 * drag.vx;
+      drag.lastX = e.clientX;
+      drag.lastT = e.timeStamp;
+    }
+    if(activeTurn === drag.turn){
+      setProgress(progressFromDrag(drag.dir === 'fwd' ? -dx : dx, drag.span));
+    }
+  }
+
+  function onPointerUp(e){
+    if(!drag || e.pointerId !== drag.id) return;
+    const d = drag;
+    drag = null;
+    if(!d.started) return; // plain click/tap: the click handler turns the page
+    suppressClickUntil = performance.now() + 350;
+    sceneEl.classList.remove('dragging');
+    const t = d.turn;
+    if(activeTurn !== t) return;
+
+    // velocity in the turning direction (px/ms), ignored if the pointer rested
+    const vx = e.timeStamp - d.lastT > 90 ? 0 : d.vx;
+    const towards = d.dir === 'fwd' ? -vx : vx;
+    const commit = e.type !== 'pointercancel' &&
+      (t.p >= 0.5 ? towards > -0.3 : towards > 0.35);
+    const target = commit ? 1 : 0;
+    const duration = Math.max(160, turnDurationMs() * Math.abs(target - t.p) * 0.9);
+    animateTo(target, duration, EASE_RELEASE, function(){
+      if(activeTurn !== t) return;
+      endTurn(commit);
+      if(commit){ drainQueue(); }
+      else { queuedSteps = 0; setTurnSpeed(false); }
+    });
   }
 
   // ================= NAVIGATION HELPERS =================
-  function cancelAnyFlip(){
-    flipToken++;              // invalidates any pending afterFlip callback
-    flipping = false;
-    leafEl.classList.remove('active','turning-fwd','turning-back');
-    sceneEl.classList.remove('turning-fwd','turning-back');
-  }
-
-  function goToChapter(num){
+  function goToChapter(num, animate){
     const target = chapterStartPage[num];
     if(target == null) return;
-    cancelAnyFlip();
-    if(mode === 'spread'){
-      pos = (target % 2 === 0) ? target : target - 1;
-    } else {
-      pos = target;
-    }
-    render();
     closeDrawer();
+    jumpTo(target, animate !== false);
   }
 
   function goHome(){
@@ -487,10 +725,8 @@
   function goToSection(sectionId){
     const target = pages.findIndex(function(page){ return page.sectionId === sectionId; });
     if(target < 0) return;
-    cancelAnyFlip();
-    pos = mode === 'spread' && target % 2 !== 0 ? target - 1 : target;
-    render();
     closeDrawer();
+    jumpTo(target, true);
   }
 
   // ================= TOC DRAWER =================
@@ -550,19 +786,21 @@
     coverEl.setAttribute('aria-hidden', 'true');
     coverEl.tabIndex = -1;
     setTimeout(function(){ chromeEl.classList.add('show'); }, 500);
+    announce();
   }
 
   // ================= MODE / RESIZE =================
   function detectMode(){ return window.innerWidth < 760 ? 'single' : 'spread'; }
 
   function rebuildForMode(newMode){
+    cancelAnyFlip();
     mode = newMode;
     sceneEl.classList.toggle('single', mode === 'single');
     const sections = buildSections();
     pages = paginate(sections, mode === 'spread');
     chapterStartPage = computeChapterStarts(pages);
     if(currentChapterNum && chapterStartPage[currentChapterNum] != null){
-      goToChapter(currentChapterNum);
+      goToChapter(currentChapterNum, false);
     } else {
       pos = 0;
       render();
@@ -599,6 +837,7 @@
     drawerScrimEl = document.getElementById('drawerScrim');
     drawerListEl = document.getElementById('drawerList');
     loaderEl = document.getElementById('loader');
+    liveEl = document.getElementById('pageAnnouncer');
 
     pageLeftEl.addEventListener('click', onPageClick('left'));
     pageRightEl.addEventListener('click', onPageClick('right'));
@@ -647,20 +886,23 @@
     });
 
     window.addEventListener('keydown', function(e){
-      if(e.key === 'ArrowRight') nextPage();
-      else if(e.key === 'ArrowLeft') prevPage();
-      else if(e.key === 'Escape') closeDrawer();
+      if(e.key === 'Escape'){ closeDrawer(); return; }
+      if(!bookOpen || drawerEl.classList.contains('show') || e.altKey || e.ctrlKey || e.metaKey) return;
+      switch(e.key){
+        case 'ArrowRight': case 'PageDown': nextPage(); break;
+        case 'ArrowLeft': case 'PageUp': prevPage(); break;
+        case 'Home': jumpTo(0, true); break;
+        case 'End': jumpTo(lastPos(), true); break;
+        default: return;
+      }
+      e.preventDefault();
     });
 
-    // basic touch swipe
-    let touchX = null;
-    sceneEl.addEventListener('touchstart', function(e){ touchX = e.touches[0].clientX; }, {passive:true});
-    sceneEl.addEventListener('touchend', function(e){
-      if(touchX == null) return;
-      const dx = e.changedTouches[0].clientX - touchX;
-      if(Math.abs(dx) > 50){ dx < 0 ? nextPage() : prevPage(); }
-      touchX = null;
-    }, {passive:true});
+    // drag / swipe to turn (mouse, pen and touch via pointer events)
+    sceneEl.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
 
     window.addEventListener('resize', onResize);
 

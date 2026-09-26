@@ -95,7 +95,7 @@
     <div class="page left" id="pageLeft"></div>
     <div class="page right" id="pageRight"></div>
 
-    <div class="leaf" id="leaf">
+    <div class="leaf" id="leaf" aria-hidden="true">
       <div class="leaf-face front" id="leafFront"></div>
       <div class="leaf-face back" id="leafBack"></div>
     </div>
@@ -108,8 +108,10 @@
     </button>
 
     <div class="reading-help" aria-hidden="true">
-      <span>Click page</span><i></i><span>Swipe</span><i></i><span>Arrow keys</span>
+      <span>Click or drag page</span><i></i><span>Swipe</span><i></i><span>Arrow keys</span>
     </div>
+
+    <div class="sr-only" id="pageAnnouncer" role="status" aria-live="polite" aria-atomic="true"></div>
 
   </div>
 

@@ -120,6 +120,7 @@ body::before{
   position:relative;
   perspective: 2600px;
   perspective-origin:50% 48%;
+  --turn-duration:980ms;
   width: calc(var(--page-w) * 2 + 6px);
   height: var(--page-h);
   transition: opacity .5s ease;
@@ -139,7 +140,7 @@ body::before{
   z-index: 30;
 }
 .scene.single .cover{ transform-origin:left center; }
-.cover.opened{ transform: rotateY(-155deg); opacity:0; pointer-events:none; }
+.cover.opened{ pointer-events:none; }
 
 .cover-face{
   position:absolute; inset:0;
@@ -513,12 +514,21 @@ body::before{
   -webkit-backface-visibility:hidden;
   transform:translateZ(.1px);
   background: var(--paper);
+  color: var(--paper-text);
   overflow:hidden;
-  box-shadow: 0 10px 40px rgba(0,0,0,.4);
   contain:paint;
 }
 .leaf-face.back{ transform:rotateY(180deg) translateZ(.1px); }
 .leaf .page-inner{ position:absolute; inset:0; }
+
+/* Faces mirror the static page they stand in for, so nothing jumps when
+   the real page is swapped in at the end of a turn. */
+.leaf-face.side-left{ border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+.leaf-face.side-right{ border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.leaf-face.side-single{ border-radius: var(--radius-sm); }
+.leaf-face.side-left .page-num{ text-align:left; }
+.leaf-face.side-right .page-num,
+.leaf-face.side-single .page-num{ text-align:right; }
 
 .scene.single .leaf{ left:0 !important; }
 
@@ -779,19 +789,45 @@ body:not(.book-open) .arrow{
   pointer-events:none;
 }
 
+/* ---- Opening choreography ----
+   Closed: the book sits centred, first page hidden under the cover.
+   Opening: the book slides right until its spine reaches centre while the
+   cover swings about that spine; the right page rides along beneath it,
+   the left page fades up where the cover will land, and only after landing
+   does the cover fade to reveal it. The fade is applied to the faces, not
+   .cover, because opacity < 1 on a preserve-3d element flattens it and
+   lets the mirrored front face show through mid-swing. */
 .cover{
   inset:0 auto 0 50%;
   width:var(--page-w);
-  transform:translateX(-50%);
+  transform:translateX(-50%) rotateY(0deg);
   transform-origin:left center;
+  transition:transform 1.1s cubic-bezier(.6,0,.15,1);
 }
 .cover.opened{
-  transform:translateX(-50%) rotateY(-164deg) translateZ(4px);
+  transform:translateX(0) rotateY(-180deg);
 }
+.scene.single .cover{ left:0; transform:translateX(0) rotateY(0deg); }
+.scene.single .cover.opened{ transform:translateX(0) rotateY(-180deg); }
 .cover-face{
   border-radius:3px 8px 8px 3px;
   backface-visibility:hidden;
+  transition:opacity .2s ease;
 }
+.cover.opened .cover-face{
+  opacity:0;
+  transition:opacity .4s ease .95s;
+}
+
+.page{ transition:opacity .25s ease, transform 1.1s cubic-bezier(.6,0,.15,1); }
+body:not(.book-open) .page.right{ transform:translateX(calc(var(--page-w) * -.5 + 3px)); }
+.scene.single .page.right{ transform:none; }
+body.book-open .page.left{ transition:opacity .45s ease .45s; }
+body.book-open .page.right{ transition:opacity .15s ease, transform 1.1s cubic-bezier(.6,0,.15,1); }
+body.book-open .scene::before{ transition:opacity .55s ease .35s; }
+body.book-open .scene::after{ transition:opacity .4s ease .7s; }
+body.book-open .arrow{ animation:arrow-in .45s ease .8s backwards; }
+@keyframes arrow-in{ from{ opacity:0; } }
 .cover-face::after{
   content:"";
   position:absolute;
@@ -843,25 +879,53 @@ body:not(.book-open) .arrow{
   line-height:.76;
 }
 
+.scene.turn-fast{ --turn-duration:560ms; }
+
+/* gutter shading, matching .page.left/.page.right::after */
+.leaf-face.side-left{
+  background:
+    linear-gradient(90deg, transparent calc(100% - 38px), rgba(0,0,0,.14)),
+    linear-gradient(90deg, rgba(90,67,34,.075), transparent 4%, transparent 96%, rgba(90,67,34,.07)),
+    repeating-linear-gradient(0deg, rgba(85,63,31,.018) 0, rgba(85,63,31,.018) 1px, transparent 1px, transparent 4px),
+    var(--paper);
+}
+.leaf-face.side-right{
+  background:
+    linear-gradient(270deg, transparent calc(100% - 38px), rgba(0,0,0,.14)),
+    linear-gradient(90deg, rgba(90,67,34,.075), transparent 4%, transparent 96%, rgba(90,67,34,.07)),
+    repeating-linear-gradient(0deg, rgba(85,63,31,.018) 0, rgba(85,63,31,.018) 1px, transparent 1px, transparent 4px),
+    var(--paper);
+}
+
+/* Turn geometry is driven from reader.js through custom properties, so
+   clicks, queued turns, riffles and drags all share one renderer:
+     --angle  leaf rotation in degrees
+     --p      how far the sheet has turned, 0..1 (|angle| / 180)
+     --hump   sin(p·π): 0 lying flat, 1 standing edge-on
+   data-spine="left|right" says which edge the sheet hinges on. */
 .leaf{
-  --turn-duration:980ms;
-  transform-style:preserve-3d;
-  will-change:transform;
+  --angle:0; --p:0; --hump:0;
+  transform:rotateY(calc(var(--angle) * 1deg));
+  /* the sheet rises off the stack as it turns; `translate` composes in
+     scene space, outside the rotation */
+  translate:0 0 calc(var(--hump) * 18px);
 }
-@keyframes leaf-flip-fwd{
-  from{ transform:rotateY(0deg) translateZ(0); }
-  to{ transform:rotateY(-180deg) translateZ(0); }
+/* cast shadow grows with the lift instead of popping in at full strength */
+.leaf-face{
+  box-shadow:0 calc(var(--hump) * 16px) calc(var(--hump) * 44px) rgba(0,0,0,calc(var(--hump) * .42));
 }
-@keyframes leaf-flip-back{
-  from{ transform:rotateY(0deg) translateZ(0); }
-  to{ transform:rotateY(180deg) translateZ(0); }
+
+/* reverse of a single-mode sheet: plain paper, shaded toward the hinge */
+.leaf-face.side-verso{
+  border-radius:var(--radius-sm);
+  background:
+    linear-gradient(270deg, rgba(0,0,0,.12), transparent 34%),
+    linear-gradient(90deg, rgba(90,67,34,.075), transparent 4%, transparent 96%, rgba(90,67,34,.07)),
+    repeating-linear-gradient(0deg, rgba(85,63,31,.018) 0, rgba(85,63,31,.018) 1px, transparent 1px, transparent 4px),
+    var(--paper-shadow);
 }
-.leaf.turning-fwd{
-  animation:leaf-flip-fwd var(--turn-duration) cubic-bezier(.32,.02,.18,1) forwards;
-}
-.leaf.turning-back{
-  animation:leaf-flip-back var(--turn-duration) cubic-bezier(.32,.02,.18,1) forwards;
-}
+
+/* light sweeping across the curving sheet */
 .leaf-face.front::before,
 .leaf-face.back::before{
   content:"";
@@ -869,47 +933,28 @@ body:not(.book-open) .arrow{
   inset:0;
   z-index:6;
   pointer-events:none;
-  opacity:0;
 }
-.leaf.turning-fwd .leaf-face.front::before{
-  background:
-    linear-gradient(90deg, transparent 0 45%, rgba(255,252,235,.42) 66%, rgba(37,26,13,.48) 100%);
+.leaf-face.front::before{
+  opacity:calc(.08 + var(--hump) * .82);
+  transform:scaleX(calc(.12 + var(--hump) * .88));
+}
+.leaf-face.back::before{ opacity:calc(var(--hump) * .78); }
+.leaf[data-spine="left"] .leaf-face.front::before{
+  background:linear-gradient(90deg, transparent 0 45%, rgba(255,252,235,.42) 66%, rgba(37,26,13,.48) 100%);
   transform-origin:right center;
-  animation:page-light-fwd var(--turn-duration) linear;
 }
-.leaf.turning-back .leaf-face.front::before{
-  background:
-    linear-gradient(270deg, transparent 0 45%, rgba(255,252,235,.42) 66%, rgba(37,26,13,.48) 100%);
+.leaf[data-spine="right"] .leaf-face.front::before{
+  background:linear-gradient(270deg, transparent 0 45%, rgba(255,252,235,.42) 66%, rgba(37,26,13,.48) 100%);
   transform-origin:left center;
-  animation:page-light-backward var(--turn-duration) linear;
 }
-.leaf.turning-fwd .leaf-face.back::before{
+.leaf[data-spine="left"] .leaf-face.back::before{
   background:linear-gradient(270deg, rgba(35,24,12,.38), rgba(255,250,226,.18) 28%, transparent 62%);
-  animation:page-light-reverse var(--turn-duration) linear;
 }
-.leaf.turning-back .leaf-face.back::before{
+.leaf[data-spine="right"] .leaf-face.back::before{
   background:linear-gradient(90deg, rgba(35,24,12,.38), rgba(255,250,226,.18) 28%, transparent 62%);
-  animation:page-light-reverse var(--turn-duration) linear;
-}
-@keyframes page-light-fwd{
-  0%{ opacity:.08; transform:scaleX(.12); }
-  42%{ opacity:.72; transform:scaleX(.78); }
-  58%{ opacity:.9; transform:scaleX(1); }
-  100%{ opacity:.06; transform:scaleX(.18); }
-}
-@keyframes page-light-backward{
-  0%{ opacity:.08; transform:scaleX(.12); }
-  42%{ opacity:.72; transform:scaleX(.78); }
-  58%{ opacity:.9; transform:scaleX(1); }
-  100%{ opacity:.06; transform:scaleX(.18); }
-}
-@keyframes page-light-reverse{
-  0%,38%{ opacity:0; }
-  52%{ opacity:.78; }
-  76%{ opacity:.28; }
-  100%{ opacity:0; }
 }
 
+/* bright paper edge catching the light while the sheet stands up */
 .leaf::before{
   content:"";
   position:absolute;
@@ -918,17 +963,15 @@ body:not(.book-open) .arrow{
   bottom:1px;
   width:2px;
   pointer-events:none;
-  opacity:0;
+  opacity:var(--hump);
+  transform:scaleX(calc(.6 + var(--hump) * 1.1));
   background:linear-gradient(180deg, var(--paper-shadow), #fff8e5 45%, var(--paper-shadow));
   box-shadow:0 0 5px rgba(255,248,229,.7);
 }
-.leaf.turning-fwd::before{ right:0; animation:leaf-edge var(--turn-duration) ease-in-out; }
-.leaf.turning-back::before{ left:0; animation:leaf-edge var(--turn-duration) ease-in-out; }
-@keyframes leaf-edge{
-  0%,100%{ opacity:0; transform:scaleX(.6); }
-  44%,56%{ opacity:1; transform:scaleX(1.7); }
-}
+.leaf[data-spine="left"]::before{ right:0; }
+.leaf[data-spine="right"]::before{ left:0; }
 
+/* shadow the sheet throws onto the pages beneath it */
 .leaf::after{
   content:"";
   position:absolute;
@@ -937,40 +980,53 @@ body:not(.book-open) .arrow{
   width:24%;
   z-index:-1;
   pointer-events:none;
-  opacity:0;
+  opacity:calc(var(--hump) * .64);
   background:linear-gradient(90deg, transparent, rgba(0,0,0,.42));
   box-shadow:0 8px 18px rgba(0,0,0,.2);
 }
-.leaf.turning-fwd::after{
+.leaf[data-spine="left"]::after{
   left:-8%;
   transform-origin:right center;
-  animation:leaf-shadow-fwd var(--turn-duration) linear;
+  transform:translateX(calc((82 - var(--p) * 140) * 1%)) scaleX(var(--hump));
 }
-.leaf.turning-back::after{
+.leaf[data-spine="right"]::after{
   right:-8%;
-  transform:scaleX(-1);
   transform-origin:left center;
-  animation:leaf-shadow-back var(--turn-duration) linear;
-}
-@keyframes leaf-shadow-fwd{
-  0%,100%{ opacity:0; transform:translateX(82%) scaleX(.1); }
-  48%{ opacity:.64; transform:translateX(16%) scaleX(1); }
-  68%{ opacity:.35; transform:translateX(-15%) scaleX(.62); }
-}
-@keyframes leaf-shadow-back{
-  0%,100%{ opacity:0; transform:translateX(-82%) scaleX(-.1); }
-  48%{ opacity:.64; transform:translateX(-16%) scaleX(-1); }
-  68%{ opacity:.35; transform:translateX(15%) scaleX(-.62); }
+  transform:translateX(calc((var(--p) * 140 - 82) * 1%)) scaleX(calc(var(--hump) * -1));
 }
 
-.scene.turning-fwd .page.right,
-.scene.turning-back .page.left{
-  animation:destination-settle var(--turn-duration,980ms) linear;
+/* the page being uncovered starts in the sheet's shade and brightens */
+.page.is-destination{
+  --settle:1;
+  box-shadow:
+    inset calc(var(--settle) * 34px) 0 calc(var(--settle) * 34px) -30px rgba(0,0,0,calc(var(--settle) * .32)),
+    0 20px 45px -12px rgba(0,0,0,.55);
 }
-@keyframes destination-settle{
-  0%{ box-shadow:inset 34px 0 34px -30px rgba(0,0,0,.32), 0 20px 45px -12px rgba(0,0,0,.55); }
-  58%{ box-shadow:inset 12px 0 20px -18px rgba(0,0,0,.2), 0 20px 45px -12px rgba(0,0,0,.55); }
-  100%{ box-shadow:inset 0 0 0 transparent, 0 20px 45px -12px rgba(0,0,0,.55); }
+.page.left.is-destination{
+  box-shadow:
+    inset calc(var(--settle) * -34px) 0 calc(var(--settle) * 34px) -30px rgba(0,0,0,calc(var(--settle) * .32)),
+    0 20px 45px -12px rgba(0,0,0,.55);
+}
+
+/* dragging a page */
+body.book-open .scene{ touch-action:pan-y; }
+.scene.dragging,
+.scene.dragging *{
+  cursor:grabbing !important;
+  user-select:none;
+  -webkit-user-select:none;
+}
+
+.sr-only{
+  position:absolute;
+  width:1px;
+  height:1px;
+  padding:0;
+  margin:-1px;
+  overflow:hidden;
+  clip:rect(0 0 0 0);
+  white-space:nowrap;
+  border:0;
 }
 
 .page.right .page-inner::after,
@@ -1068,13 +1124,11 @@ body.book-open .reading-help{ opacity:1; }
   .brandmark{ font-size:0; gap:0; }
   .progress-wrap{ margin:0 9px; }
   .scene::before{ inset:6px -6px -7px; }
-  .cover{ left:0; transform:none; }
-  .cover.opened{ transform:rotateY(-164deg) translateZ(4px); }
   .page-inner{ padding:26px 24px 32px; }
   .page-content{ font-size:14px; }
   .arrow.arrow-prev{ left:-16px; }
   .arrow.arrow-next{ right:-16px; }
-  .leaf{ --turn-duration:860ms; }
+  .scene{ --turn-duration:860ms; }
 }
 
 @media (max-height:650px){
